@@ -173,7 +173,7 @@ func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
 	)
 
 	body := map[string] interface{}{
-		"webhookURL": fmt.Sprintf("http://localhost:8080/webhook/%s", str),
+		"webhookURL": fmt.Sprintf("%s/webhook/%s", os.Getenv("PUBLIC_URL"), str),
 		"webhookType": "enhanced",
 		"transactionTypes": []string{
 			"NFT_SALE",
