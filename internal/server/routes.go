@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"text/template"
 	"time"
 
@@ -30,6 +32,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/auth/{provider}", s.beginAuthHandler)
 
 	r.HandleFunc("/logout/{provider}", s.logoutHandler)
+
+	r.HandleFunc("/webhook/{str}", s.createWebhook)
 
 	return r
 }
@@ -96,7 +100,6 @@ func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	existingUser, err := s.db.GetUserByEmail(*dbUser.Email)
 
-
 	if err != nil {
 		// CreateUser will generate a UUID if ID is empty
 		err := s.db.CreateUser(dbUser)
@@ -156,6 +159,51 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	gothic.Logout(w, r)
 	w.Header().Set("Location", "/")
 	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
+	str := mux.Vars(r)["orca-webhook"]
+
+	r = r.WithContext(context.WithValue(context.Background(), "str", str))
+
+	var (
+		heliusApiKey        = os.Getenv("HELIUS_API_KEY")
+		heliusApiUrl        = os.Getenv("HELIUS_API_URL")
+		heliusWebhookSecret = os.Getenv("HELIUS_WEBHOOK_SECRET")
+	)
+
+	body := map[string] interface{}{
+		"webhookURL": fmt.Sprintf("http://localhost:8080/webhook/%s", str),
+		"webhookType": "enhanced",
+		"transactionTypes": []string{
+			"NFT_SALE",
+			"TRANSFER",
+		},
+		"accountAddresses": []string{"orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE"},
+		"txnStatus":        "success",
+		"authHeader":       fmt.Sprintf("Bearer %s", heliusWebhookSecret),
+	}
+
+	jsonBody, err := json.Marshal(body)
+
+	if err != nil {
+		log.Printf("Error occured while creating webhook: %v", err)
+		http.Error(w, "Failed to JsonMarshal body", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := http.Post(
+		fmt.Sprintf(`%s/webhooks?api-key=%s`, heliusApiUrl, heliusApiKey),
+		"application/json",
+		bytes.NewBuffer(jsonBody),
+	)
+
+	if err != nil {
+		log.Printf("Error occured while creating webhook: %v", err)
+		http.Error(w, "Error occured while creating webhook: ", http.StatusInternalServerError)
+	}
+
+	fmt.Fprintln(w, resp)
 }
 
 var userTemplate = `
