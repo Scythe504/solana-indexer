@@ -30,7 +30,6 @@ type Service interface {
 	CreateUser(user *User) error
 
 	GetUserByProviderId(providerId string) (*Account, error)
-
 }
 
 type service struct {
@@ -43,17 +42,23 @@ var (
 	username   = os.Getenv("BLUEPRINT_DB_USERNAME")
 	port       = os.Getenv("BLUEPRINT_DB_PORT")
 	host       = os.Getenv("BLUEPRINT_DB_HOST")
-	// schema     = os.Getenv("BLUEPRINT_DB_SCHEMA")
+	schema     = os.Getenv("BLUEPRINT_DB_SCHEMA")
 	dbInstance *service
+	dbUrl      = os.Getenv("DATABASE_URL")
 )
-
 
 func New() Service {
 	// Reuse Connection
 	if dbInstance != nil {
 		return dbInstance
 	}
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require", username, password, host, port, database)
+
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable&search_path=%s", username, password, host, port, database, schema)
+
+	if dbUrl != "" {
+		connStr = dbUrl
+	}
+
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Fatal(err)
