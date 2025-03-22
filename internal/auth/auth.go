@@ -12,20 +12,34 @@ import (
 	"github.com/markbates/goth/providers/google"
 )
 
-
 func NewAuth() {
-	err := godotenv.Load()
-	var (
-		key = os.Getenv("SECRET_KEY")
-		maxAge = 86400 * 30
-		isProd = os.Getenv("APP_ENV") == "local"
-	)
-	if err != nil {
-		log.Fatalf("Failed to load env variables\n %s", err)
+	envPaths := []string{
+		".env",
+		"/etc/secrets/.env",
+	}
+	envLoaded := false
+
+	for _, path := range envPaths {
+		if err := godotenv.Load(path); err == nil {
+			log.Printf("Loaded env from %s", path)
+			envLoaded = true
+			break
+		}
+	}
+
+	if !envLoaded {
+		log.Fatal("No .env files exist")
+		return
 	}
 
 	var (
-		googleClientId = os.Getenv("GOOGLE_CLIENT_ID")
+		key    = os.Getenv("SECRET_KEY")
+		maxAge = 86400 * 30
+		isProd = os.Getenv("APP_ENV") == "local"
+	)
+
+	var (
+		googleClientId     = os.Getenv("GOOGLE_CLIENT_ID")
 		googleClientSecret = os.Getenv("GOOGLE_CLIENT_SECRET")
 	)
 
