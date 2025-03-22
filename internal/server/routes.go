@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -160,50 +161,88 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", "/")
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
-
 func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["orca-webhook"]
+    str := mux.Vars(r)["orca-webhook"]
+    r = r.WithContext(context.WithValue(context.Background(), "str", str))
 
-	r = r.WithContext(context.WithValue(context.Background(), "str", str))
+    var (
+        heliusApiKey        = os.Getenv("HELIUS_API_KEY")
+        heliusApiUrl        = os.Getenv("HELIUS_API_URL")
+        heliusWebhookSecret = os.Getenv("HELIUS_WEBHOOK_SECRET")
+        publicUrl           = os.Getenv("PUBLIC_URL")
+    )
 
-	var (
-		heliusApiKey        = os.Getenv("HELIUS_API_KEY")
-		heliusApiUrl        = os.Getenv("HELIUS_API_URL")
-		heliusWebhookSecret = os.Getenv("HELIUS_WEBHOOK_SECRET")
-	)
+    // Check if required environment variables are set
+    if heliusApiKey == "" || heliusApiUrl == "" || publicUrl == "" {
+        log.Println("Missing required environment variables for Helius webhook")
+        http.Error(w, "Server configuration error", http.StatusInternalServerError)
+        return
+    }
 
-	body := map[string] interface{}{
-		"webhookURL": fmt.Sprintf("%s/webhook/%s", os.Getenv("PUBLIC_URL"), str),
-		"webhookType": "enhanced",
-		"transactionTypes": []string{
-			"NFT_SALE",
-			"TRANSFER",
-		},
-		"accountAddresses": []string{"orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE"},
-		"txnStatus":        "success",
-		"authHeader":       fmt.Sprintf("Bearer %s", heliusWebhookSecret),
-	}
+    body := map[string]interface{}{
+        "webhookURL": fmt.Sprintf("%s/webhook/%s", publicUrl, str),
+        "webhookType": "enhanced",
+        "transactionTypes": []string{
+            "NFT_SALE",
+            "TRANSFER",
+        },
+        "accountAddresses": []string{"orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE"},
+        "txnStatus": "success",
+    }
 
-	jsonBody, err := json.Marshal(body)
+    // Only add auth header if secret is available
+    if heliusWebhookSecret != "" {
+        body["authHeader"] = fmt.Sprintf("Bearer %s", heliusWebhookSecret)
+    }
 
-	if err != nil {
-		log.Printf("Error occured while creating webhook: %v", err)
-		http.Error(w, "Failed to JsonMarshal body", http.StatusInternalServerError)
-		return
-	}
+    jsonBody, err := json.Marshal(body)
+    if err != nil {
+        log.Printf("Error marshaling webhook request body: %v", err)
+        http.Error(w, "Failed to create webhook request", http.StatusInternalServerError)
+        return
+    }
 
-	resp, err := http.Post(
-		fmt.Sprintf(`%s/webhooks?api-key=%s`, heliusApiUrl, heliusApiKey),
-		"application/json",
-		bytes.NewBuffer(jsonBody),
-	)
+    // Create the request with proper URL
+    url := fmt.Sprintf("%s/webhooks?api-key=%s", heliusApiUrl, heliusApiKey)
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+    if err != nil {
+        log.Printf("Error creating request: %v", err)
+        http.Error(w, "Failed to create webhook request", http.StatusInternalServerError)
+        return
+    }
 
-	if err != nil {
-		log.Printf("Error occured while creating webhook: %v", err)
-		http.Error(w, "Error occured while creating webhook: ", http.StatusInternalServerError)
-	}
+    // Set content type header
+    req.Header.Set("Content-Type", "application/json")
 
-	fmt.Fprintln(w, resp)
+    // Send the request
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        log.Printf("Error sending webhook creation request: %v", err)
+        http.Error(w, "Failed to connect to Helius API", http.StatusInternalServerError)
+        return
+    }
+    defer resp.Body.Close()
+
+    // Read response body
+    respBody, err := io.ReadAll(resp.Body)
+    if err != nil {
+        log.Printf("Error reading response body: %v", err)
+        http.Error(w, "Failed to read API response", http.StatusInternalServerError)
+        return
+    }
+
+    // Check response status
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+        log.Printf("Helius API error: %s - %s", resp.Status, string(respBody))
+        http.Error(w, fmt.Sprintf("Helius API error: %s", string(respBody)), http.StatusBadRequest)
+        return
+    }
+
+    // Return the successful response to the client
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    w.Write(respBody)
 }
 
 var userTemplate = `
