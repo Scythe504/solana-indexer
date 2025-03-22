@@ -1,7 +1,5 @@
-FROM Ubuntu-20:alpine
-
 # Use the official Go image as a parent image
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23.2-alpine AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -29,6 +27,7 @@ COPY --from=builder /app/main .
 # Copy any necessary configuration files
 COPY --from=builder /app/config* ./
 
+COPY .env ./
 # Expose the port your application uses
 EXPOSE 8080
 
