@@ -5,17 +5,17 @@ import (
 )
 
 type User struct {
-	ID            string                 `db:"id"`
-	Name          *string                `db:"name"`
-	Email         *string                `db:"email"`
-	EmailVerified bool                   `db:"email_verified"`
-	Image         *string                `db:"image"`
-	CreatedAt     *time.Time             `db:"created_at"`
-	UpdatedAt     *time.Time             `db:"updated_at"`
-	Accounts      []Account              `db:"-"`
-	Sessions      []Session              `db:"-"`
-	DbCredential  UserDatabaseCredential `db:"-"`
-	Indexing      []IndexingToken        `db:"-"`
+	ID            string                  `db:"id"`
+	Name          *string                 `db:"name"`
+	Email         *string                 `db:"email"`
+	EmailVerified bool                    `db:"email_verified"`
+	Image         *string                 `db:"image"`
+	CreatedAt     *time.Time              `db:"created_at"`
+	UpdatedAt     *time.Time              `db:"updated_at"`
+	Accounts      []Account               `db:"-"`
+	Sessions      []Session               `db:"-"`
+	DbCredential  UserDatabaseCredential  `db:"-"`
+	Indexing      []TokenIndexingStrategy `db:"-"`
 }
 
 type Account struct {
@@ -52,32 +52,54 @@ type VerificationRequest struct {
 }
 
 type UserDatabaseCredential struct {
-	ID              string     `db:"id"`
-	UserId          string     `db:"user_id"`
-	DatabaseName    string     `db:"db_name"`
-	Host            string     `db:"host"`
-	User            string     `db:"user"`
-	Port            uint16     `db:"port"`
-	Password        string     `db:"password"`
-	SSLMode         string     `db:"ssl_mode"`
-	ConnectionLimit *int8      `db:"connection_limit"`
-	Status          string     `db:"status"`
-	LastConnectedAt *time.Time `db:"last_connected_at"`
-	CreatedAt       time.Time  `db:"created_at"`
-	UpdatedAt       time.Time  `db:"updated_at"`
-	ErrorMessage    string     `db:"error_message"`
+	ID               string     `db:"id"`
+	UserId           string     `db:"user_id"`
+	DatabaseName     *string    `db:"db_name"`
+	Host             *string    `db:"host"`
+	User             *string    `db:"user"`
+	Port             *uint16    `db:"port"`
+	Password         *string    `db:"password"`
+	SSLMode          *string    `db:"ssl_mode"`
+	ConnectionString *string    `db:"connection_string"`
+	ConnectionLimit  *int8      `db:"connection_limit"`
+	Status           string     `db:"status"`
+	LastConnectedAt  *time.Time `db:"last_connected_at"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	ErrorMessage     string     `db:"error_message"`
 }
 
+// Keep this table as your token registry
 type IndexingToken struct {
-	Id              string           `db:"id"`
-	UserId          string           `db:"user_id"`
-	TokenAddress    string           `db:"token_address"`
-	TokenName       string           `db:"token_name"`
-	TokenSymbol     string           `db:"token_symbol"`
-	Strategy        IndexingStrategy `db:"indexing_strategy"`
-	CreatedAt       time.Time        `db:"created_at"`
-	UpdatedAt       time.Time        `db:"updated_at"`
-	IndexingStopped bool             `db:"indexing_stopped"`
+	Id              string    `db:"id"`
+	TokenAddress    string    `db:"token_address"` // Primary index field
+	TokenName       string    `db:"token_name"`
+	TokenSymbol     string    `db:"token_symbol"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
+	IndexingStopped bool      `db:"indexing_stopped"`
+}
+
+// This becomes your primary subscription table (many-to-many relationship)
+type TokenIndexingStrategy struct {
+	Id           string             `db:"id"`
+	UserId       string             `db:"user_id"`       // Index this
+	TokenAddress string             `db:"token_address"` // Index this
+	Strategies   []IndexingStrategy `db:"indexing_strategy"`
+	TableName    string             `db:"table_name"` // Add this field
+	CreatedAt    time.Time          `db:"created_at"`
+	UpdatedAt    time.Time          `db:"updated_at"`
+	Status       string             `db:"status"` // Add status field
+}
+
+// Replace this with a denormalized lookup table for faster processing
+type TokenSubscriptionLookup struct {
+	Id           string    `db:"id"`
+	TokenAddress string    `db:"token_address"` // Primary index field
+	UserId       string    `db:"user_id"`       // Individual user ID (not array)
+	Strategy     string    `db:"strategy"`      // Single strategy (not array)
+	TableName    string    `db:"table_name"`
+	LastUpdated  time.Time `db:"last_updated"`
 }
 
 type IndexingStrategy string
