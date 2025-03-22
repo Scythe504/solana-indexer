@@ -27,6 +27,7 @@ COPY --from=builder /app/main .
 # Copy any necessary configuration files
 COPY --from=builder /app/config* ./
 
+COPY .env ./
 # Expose the port your application uses
 EXPOSE 8080
 
