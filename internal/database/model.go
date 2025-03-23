@@ -62,7 +62,7 @@ type UserDatabaseCredential struct {
 	SSLMode          *string    `db:"ssl_mode"`
 	ConnectionString *string    `db:"connection_string"`
 	ConnectionLimit  *int8      `db:"connection_limit"`
-	Status           string     `db:"status"`
+	Status           *string     `db:"status"`
 	LastConnectedAt  *time.Time `db:"last_connected_at"`
 	CreatedAt        time.Time  `db:"created_at"`
 	UpdatedAt        time.Time  `db:"updated_at"`
@@ -77,7 +77,6 @@ type IndexingToken struct {
 	TokenSymbol     string    `db:"token_symbol"`
 	CreatedAt       time.Time `db:"created_at"`
 	UpdatedAt       time.Time `db:"updated_at"`
-	IndexingStopped bool      `db:"indexing_stopped"`
 }
 
 // This becomes your primary subscription table (many-to-many relationship)
@@ -86,20 +85,30 @@ type TokenIndexingStrategy struct {
 	UserId       string             `db:"user_id"`       // Index this
 	TokenAddress string             `db:"token_address"` // Index this
 	Strategies   []IndexingStrategy `db:"indexing_strategy"`
-	TableName    string             `db:"table_name"` // Add this field
+	TableName    string             `db:"table_name"`
 	CreatedAt    time.Time          `db:"created_at"`
 	UpdatedAt    time.Time          `db:"updated_at"`
-	Status       string             `db:"status"` // Add status field
+	Status       string             `db:"status"`
 }
 
 // Replace this with a denormalized lookup table for faster processing
 type TokenSubscriptionLookup struct {
+	Id              string           `db:"id"`
+	TokenAddress    string           `db:"token_address"` // Primary index field
+	UserId          string           `db:"user_id"`       // Individual user ID (not array)
+	Strategy        IndexingStrategy `db:"strategy"`      // Single strategy (not array)
+	TableName       string           `db:"table_name"`
+	HeliusWebhookId string           `db:"helius_webhook_id"`
+	LastUpdated     time.Time        `db:"last_updated"`
+}
+
+type HeliusWebhookConfig struct {
 	Id           string    `db:"id"`
-	TokenAddress string    `db:"token_address"` // Primary index field
-	UserId       string    `db:"user_id"`       // Individual user ID (not array)
-	Strategy     string    `db:"strategy"`      // Single strategy (not array)
-	TableName    string    `db:"table_name"`
-	LastUpdated  time.Time `db:"last_updated"`
+	WebhookName  string    `db:"webhook_name"`
+	WebhookId    string    `db:"webhook_id"`
+	AddressCount int32     `db:"address_count"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
 }
 
 type IndexingStrategy string

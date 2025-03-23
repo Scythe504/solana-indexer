@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -34,7 +33,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.HandleFunc("/logout/{provider}", s.logoutHandler)
 
-	r.HandleFunc("/webhook/{str}", s.createWebhook)
+	r.HandleFunc("/webhoook/{receiverName}", s.handleWebhookReceiver)
+
+	r.HandleFunc("/database", s.createUserDatabase)
 
 	return r
 }
@@ -79,6 +80,51 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, _ = w.Write(jsonResp)
 }
+
+func (s *Server) handleWebhookReceiver(w http.ResponseWriter, r *http.Request) {
+	receiverName := mux.Vars(r)["receiverId"]
+
+	r = r.WithContext(context.WithValue(context.Background(), "receiverName", receiverName))
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("Error reading the request body: ", err)
+		http.Error(w, "Error reading the request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var webhookData map[string]interface{}
+
+	if err := json.Unmarshal(body, &webhookData); err != nil {
+		log.Println("Error while parsing webhook payload", err)
+		http.Error(w, "Invalid Json payload", http.StatusBadRequest)
+		return
+	}
+
+	webhookConfig, err := s.db.GetWebhookConfigByName(receiverName)
+
+	if err != nil {
+		log.Printf("Error finding webhook configuration for receiver %s: %v", receiverName, err)
+		http.Error(w, "Webhook receiver not found", http.StatusNotFound)
+		return
+	}
+
+	_, err = s.db.GetSubscriptionsByWebhookId(webhookConfig.WebhookId)
+	if err != nil {
+		log.Printf("Error finding subscriptions for webhook %s: %v", webhookConfig.Id, err)
+		http.Error(w, "Failed to process webhook", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "success"}`))
+}
+
+func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request){
+	
+}
+
 func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	providerName := mux.Vars(r)["provider"]
@@ -125,7 +171,7 @@ func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 	account := database.Account{
 		ID:                 utils.GenerateUUID(),
 		UserID:             dbUser.ID, // Use the database user ID here
-		ProviderType:       "oidc",
+		ProviderType:       "oauth2",
 		ProviderID:         "google.com",
 		ProviderAccountID:  user.UserID,
 		RefreshToken:       &user.RefreshToken,
@@ -143,7 +189,7 @@ func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "http://localhost:3000", http.StatusFound)
+	http.Redirect(w, r, fmt.Sprintf("%s/onboarding/database", os.Getenv("FRONTEND_URL")), http.StatusFound)
 }
 
 func (s *Server) beginAuthHandler(w http.ResponseWriter, r *http.Request) {
@@ -160,89 +206,6 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	gothic.Logout(w, r)
 	w.Header().Set("Location", "/")
 	w.WriteHeader(http.StatusTemporaryRedirect)
-}
-func (s *Server) createWebhook(w http.ResponseWriter, r *http.Request) {
-    str := mux.Vars(r)["orca-webhook"]
-    r = r.WithContext(context.WithValue(context.Background(), "str", str))
-
-    var (
-        heliusApiKey        = os.Getenv("HELIUS_API_KEY")
-        heliusApiUrl        = os.Getenv("HELIUS_API_URL")
-        heliusWebhookSecret = os.Getenv("HELIUS_WEBHOOK_SECRET")
-        publicUrl           = os.Getenv("PUBLIC_URL")
-    )
-
-    // Check if required environment variables are set
-    if heliusApiKey == "" || heliusApiUrl == "" || publicUrl == "" {
-        log.Println("Missing required environment variables for Helius webhook")
-        http.Error(w, "Server configuration error", http.StatusInternalServerError)
-        return
-    }
-
-    body := map[string]interface{}{
-        "webhookURL": fmt.Sprintf("%s/webhook/%s", publicUrl, str),
-        "webhookType": "enhanced",
-        "transactionTypes": []string{
-            "NFT_SALE",
-            "TRANSFER",
-        },
-        "accountAddresses": []string{"orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE"},
-        "txnStatus": "success",
-    }
-
-    // Only add auth header if secret is available
-    if heliusWebhookSecret != "" {
-        body["authHeader"] = fmt.Sprintf("Bearer %s", heliusWebhookSecret)
-    }
-
-    jsonBody, err := json.Marshal(body)
-    if err != nil {
-        log.Printf("Error marshaling webhook request body: %v", err)
-        http.Error(w, "Failed to create webhook request", http.StatusInternalServerError)
-        return
-    }
-
-    // Create the request with proper URL
-    url := fmt.Sprintf("%s/webhooks?api-key=%s", heliusApiUrl, heliusApiKey)
-    req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
-    if err != nil {
-        log.Printf("Error creating request: %v", err)
-        http.Error(w, "Failed to create webhook request", http.StatusInternalServerError)
-        return
-    }
-
-    // Set content type header
-    req.Header.Set("Content-Type", "application/json")
-
-    // Send the request
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        log.Printf("Error sending webhook creation request: %v", err)
-        http.Error(w, "Failed to connect to Helius API", http.StatusInternalServerError)
-        return
-    }
-    defer resp.Body.Close()
-
-    // Read response body
-    respBody, err := io.ReadAll(resp.Body)
-    if err != nil {
-        log.Printf("Error reading response body: %v", err)
-        http.Error(w, "Failed to read API response", http.StatusInternalServerError)
-        return
-    }
-
-    // Check response status
-    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-        log.Printf("Helius API error: %s - %s", resp.Status, string(respBody))
-        http.Error(w, fmt.Sprintf("Helius API error: %s", string(respBody)), http.StatusBadRequest)
-        return
-    }
-
-    // Return the successful response to the client
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    w.Write(respBody)
 }
 
 var userTemplate = `

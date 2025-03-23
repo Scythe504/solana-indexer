@@ -23,13 +23,19 @@ type Service interface {
 	// It returns an error if the connection cannot be closed.
 	Close() error
 
+	// UserMethods
 	GetUserByEmail(email string) (*User, error)
-
 	CreateAccount(account *Account) error
-
 	CreateUser(user *User) error
-
 	GetUserByProviderId(providerId string) (*Account, error)
+	
+	// WebhookMethods
+	GetAllWebhooks() ([]HeliusWebhookConfig, error)
+	CreateWebhook(name string, txnType IndexingStrategy, address string) error
+	GetWebhookConfigByName(name string) (HeliusWebhookConfig, error)
+
+	// TokenSubscriptionMethods
+	GetSubscriptionsByWebhookId(webhookId string) ([]TokenSubscriptionLookup, error)
 }
 
 type service struct {
