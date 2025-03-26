@@ -18,6 +18,8 @@
 go.work
 tmp/
 
+json_dump
+
 # IDE specific files
 .vscode
 .idea

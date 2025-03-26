@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/markbates/goth/gothic"
 	"github.com/scythe504/solana-indexer/internal/database"
+	"github.com/scythe504/solana-indexer/internal/kafka"
 	"github.com/scythe504/solana-indexer/internal/utils"
 )
 
@@ -33,9 +34,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.HandleFunc("/logout/{provider}", s.logoutHandler)
 
-	r.HandleFunc("/webhoook/{receiverName}", s.handleWebhookReceiver)
+	r.HandleFunc("/webhook/{receiverName}", s.handleWebhookReceiver)
 
-	r.HandleFunc("/database", s.createUserDatabase)
+	r.HandleFunc("/create-database", s.createUserDatabase)
 
 	return r
 }
@@ -82,8 +83,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebhookReceiver(w http.ResponseWriter, r *http.Request) {
-	receiverName := mux.Vars(r)["receiverId"]
-
+	receiverName := mux.Vars(r)["receiverName"]
 	r = r.WithContext(context.WithValue(context.Background(), "receiverName", receiverName))
 
 	body, err := io.ReadAll(r.Body)
@@ -94,35 +94,53 @@ func (s *Server) handleWebhookReceiver(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var webhookData map[string]interface{}
-
-	if err := json.Unmarshal(body, &webhookData); err != nil {
-		log.Println("Error while parsing webhook payload", err)
-		http.Error(w, "Invalid Json payload", http.StatusBadRequest)
-		return
-	}
-
-	webhookConfig, err := s.db.GetWebhookConfigByName(receiverName)
+	err = kafka.ParseBodyAndPushToProducer(s.kafka, body, receiverName)
 
 	if err != nil {
-		log.Printf("Error finding webhook configuration for receiver %s: %v", receiverName, err)
-		http.Error(w, "Webhook receiver not found", http.StatusNotFound)
+		log.Println("Invalid Json or failed to push the data to kafka producer", err)
+		http.Error(w, "Error parsing the body to json: ", http.StatusBadRequest)
 		return
 	}
 
-	_, err = s.db.GetSubscriptionsByWebhookId(webhookConfig.WebhookId)
-	if err != nil {
-		log.Printf("Error finding subscriptions for webhook %s: %v", webhookConfig.Id, err)
-		http.Error(w, "Failed to process webhook", http.StatusInternalServerError)
-		return
-	}
-
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status": "success"}`))
 }
 
-func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request){
-	
+func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request) {
+	var dbCredential database.UserDatabaseCredential
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("Error reading the request body: ", err)
+		http.Error(w, "Error reading the request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	if err := json.Unmarshal(body, &dbCredential); err != nil {
+		log.Println("Error occured while trying to parse body", err)
+		http.Error(w, "Invalid Json Payload", http.StatusBadRequest)
+		return
+	}
+	dbExists, _ := s.db.GetDatabaseConfig(dbCredential.UserId)
+
+	if dbExists != nil {
+		log.Println("Database config found for user with userId: ", dbCredential.UserId)
+		http.Error(w, "Database config already exists", http.StatusBadRequest)
+		return
+	}
+
+	err = s.db.CreateDatabaseForUser(dbCredential.UserId, dbCredential)
+
+	if err != nil {
+		log.Println("Invalid database credentials for userId: ", dbCredential.UserId)
+		http.Error(w, "Please check you database credentials or if your database is running", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"success": "Database credentials stored securely"}`))
 }
 
 func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +181,7 @@ func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	if existingAccount != nil {
 		fmt.Println("Account Already Exists in Db")
-		http.Redirect(w, r, "http://localhost:3000", http.StatusFound)
+		http.Redirect(w, r, os.Getenv("FRONTEND_URL"), http.StatusFound)
 		return
 	}
 	now := time.Now()

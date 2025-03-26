@@ -28,14 +28,23 @@ type Service interface {
 	CreateAccount(account *Account) error
 	CreateUser(user *User) error
 	GetUserByProviderId(providerId string) (*Account, error)
-	
+
 	// WebhookMethods
 	GetAllWebhooks() ([]HeliusWebhookConfig, error)
 	CreateWebhook(name string, txnType IndexingStrategy, address string) error
 	GetWebhookConfigByName(name string) (HeliusWebhookConfig, error)
 
-	// TokenSubscriptionMethods
-	GetSubscriptionsByWebhookId(webhookId string) ([]TokenSubscriptionLookup, error)
+	// User Database Methods
+	GetDatabaseConfig(userId string) (*UserDatabaseCredential, error)
+	CreateDatabaseForUser(userId string, dbCred UserDatabaseCredential) error
+
+	// SubscriptionMethods
+	GetSubscriptionsByWebhookId(webhookId string) ([]SubscriptionLookup, error)
+	// GetAddressData(publicAddress string) (*AddressRegistery, error)
+	// SubscribeToAddress(userId string) error
+	// RegisterAddress(token AddressRegistery) error
+	GetSubscriptionsByTxnType(txnType IndexingStrategy, recieverName string) ([]SubscriptionLookup, error)
+	GetSubscriptionsByAddressAndTxnType(address string, txnType IndexingStrategy, recieverName string) ([]SubscriptionLookup, error)
 }
 
 type service struct {

@@ -10,19 +10,21 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/scythe504/solana-indexer/internal/database"
+	"github.com/scythe504/solana-indexer/internal/kafka"
 )
 
 type Server struct {
-	port int
-	db   database.Service
+	port  int
+	db    database.Service
+	kafka *kafka.KafkaClientManager
 }
 
 func NewServer() *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	NewServer := &Server{
-		port: port,
-
-		db: database.New(),
+		port:  port,
+		kafka: kafka.NewKafkaClientManager(),
+		db:    database.New(),
 	}
 
 	// Declare Server config

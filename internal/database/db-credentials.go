@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/scythe504/solana-indexer/internal/utils"
 )
 
 func (s *service) CreateDatabaseForUser(userId string, dbCred UserDatabaseCredential) error {
@@ -53,7 +55,7 @@ func (s *service) CreateDatabaseForUser(userId string, dbCred UserDatabaseCreden
 			updated_at, 
 			error_message
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-	`, dbCred.ID,
+	`, utils.GenerateUUID(),
 		userId,
 		dbCred.Host,
 		dbCred.User,

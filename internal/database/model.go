@@ -5,17 +5,17 @@ import (
 )
 
 type User struct {
-	ID            string                  `db:"id"`
-	Name          *string                 `db:"name"`
-	Email         *string                 `db:"email"`
-	EmailVerified bool                    `db:"email_verified"`
-	Image         *string                 `db:"image"`
-	CreatedAt     *time.Time              `db:"created_at"`
-	UpdatedAt     *time.Time              `db:"updated_at"`
-	Accounts      []Account               `db:"-"`
-	Sessions      []Session               `db:"-"`
-	DbCredential  UserDatabaseCredential  `db:"-"`
-	Indexing      []TokenIndexingStrategy `db:"-"`
+	ID            string                 `db:"id"`
+	Name          *string                `db:"name"`
+	Email         *string                `db:"email"`
+	EmailVerified bool                   `db:"email_verified"`
+	Image         *string                `db:"image"`
+	CreatedAt     *time.Time             `db:"created_at"`
+	UpdatedAt     *time.Time             `db:"updated_at"`
+	Accounts      []Account              `db:"-"`
+	Sessions      []Session              `db:"-"`
+	DbCredential  UserDatabaseCredential `db:"-"`
+	Indexing      []Subscription    `db:"-"`
 }
 
 type Account struct {
@@ -62,7 +62,7 @@ type UserDatabaseCredential struct {
 	SSLMode          *string    `db:"ssl_mode"`
 	ConnectionString *string    `db:"connection_string"`
 	ConnectionLimit  *int8      `db:"connection_limit"`
-	Status           *string     `db:"status"`
+	Status           *string    `db:"status"`
 	LastConnectedAt  *time.Time `db:"last_connected_at"`
 	CreatedAt        time.Time  `db:"created_at"`
 	UpdatedAt        time.Time  `db:"updated_at"`
@@ -70,17 +70,17 @@ type UserDatabaseCredential struct {
 }
 
 // Keep this table as your token registry
-type IndexingToken struct {
-	Id              string    `db:"id"`
-	TokenAddress    string    `db:"token_address"` // Primary index field
-	TokenName       string    `db:"token_name"`
-	TokenSymbol     string    `db:"token_symbol"`
-	CreatedAt       time.Time `db:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at"`
+type AddressRegistery struct {
+	Id            string     `db:"id"`
+	TokenAddress  string     `db:"token_address"` // Primary index field
+	TokenName     string     `db:"token_name"`
+	TokenSymbol   string     `db:"token_symbol"`
+	CreatedAt     time.Time  `db:"created_at"`
+	LastFetchedAt *time.Time `db:"last_fetched_at"`
 }
 
 // This becomes your primary subscription table (many-to-many relationship)
-type TokenIndexingStrategy struct {
+type Subscription struct {
 	Id           string             `db:"id"`
 	UserId       string             `db:"user_id"`       // Index this
 	TokenAddress string             `db:"token_address"` // Index this
@@ -92,7 +92,7 @@ type TokenIndexingStrategy struct {
 }
 
 // Replace this with a denormalized lookup table for faster processing
-type TokenSubscriptionLookup struct {
+type SubscriptionLookup struct {
 	Id              string           `db:"id"`
 	TokenAddress    string           `db:"token_address"` // Primary index field
 	UserId          string           `db:"user_id"`       // Individual user ID (not array)

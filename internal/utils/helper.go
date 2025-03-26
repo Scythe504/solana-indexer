@@ -13,6 +13,14 @@ func GenerateUUID() string {
 	return id
 }
 
+type AddressType string
+
+const (
+	WALLET AddressType = "wallet"
+	TOKEN  AddressType = "token"
+	NFT    AddressType = "nft"
+)
+
 func ValidSolanaAddress(publicAddress string) error {
 	_, err := solana.PublicKeyFromBase58(publicAddress)
 
@@ -23,3 +31,26 @@ func ValidSolanaAddress(publicAddress string) error {
 
 	return nil
 }
+
+// func GetSolanaAddressType(publicAddress string) {
+// 	client := rpc.New(rpc.MainNetBeta_RPC)
+	
+	
+// }
+// func GetSolanaAddressData(publicAddress string) (*rpc.DataBytesOrJSON, error) {
+// 	client := rpc.New(rpc.MainNetBeta_RPC)
+
+// 	address, _ := solana.PublicKeyFromBase58(publicAddress)
+
+// 	account, err := client.GetAccountInfo(
+// 		context.Background(),
+// 		address,
+// 	)
+
+// 	if err != nil {
+// 		log.Printf("Failed to get account info: %v\n", err)
+// 		return nil, err
+// 	}
+
+// 	return account.Value.Data, nil
+// }
