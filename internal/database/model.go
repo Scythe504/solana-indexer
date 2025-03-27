@@ -88,7 +88,7 @@ type Subscription struct {
 	TableName    string             `db:"table_name"`
 	CreatedAt    time.Time          `db:"created_at"`
 	UpdatedAt    time.Time          `db:"updated_at"`
-	Status       string             `db:"status"`
+	Status       bool             `db:"status"`
 }
 
 // Replace this with a denormalized lookup table for faster processing

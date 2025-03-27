@@ -45,6 +45,8 @@ type Service interface {
 	// RegisterAddress(token AddressRegistery) error
 	GetSubscriptionsByTxnType(txnType IndexingStrategy, recieverName string) ([]SubscriptionLookup, error)
 	GetSubscriptionsByAddressAndTxnType(address string, txnType IndexingStrategy, recieverName string) ([]SubscriptionLookup, error)
+	CreateSubscription(tokenAddress string, strats []IndexingStrategy, userId string) error
+	GetAddressFromRegistery(address string) (AddressRegistery, error)
 }
 
 type service struct {

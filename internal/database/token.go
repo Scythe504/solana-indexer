@@ -1,6 +1,8 @@
 package database
 
 import (
+	"context"
+	"database/sql"
 	"log"
 	"time"
 
@@ -113,7 +115,7 @@ func (s *service) GetSubscriptionsByAddressAndTxnType(address string, txnType In
 	)
 
 	if err != nil {
-		log.Printf("Error occured while trying to get helius configs", err)
+		log.Printf("Error occured while trying to get helius configs: %v", err)
 		return nil, err
 	}
 
@@ -162,6 +164,35 @@ func (s *service) GetSubscriptionsByAddressAndTxnType(address string, txnType In
 	return subscriptions, nil
 }
 
+func (s *service) GetAddressFromRegistery(address string) (AddressRegistery, error) {
+	var reg AddressRegistery
+	err := s.db.QueryRow(`
+		SELECT (
+			id, 
+			token_address,
+			token_name,
+			token_symbol,
+			created_at,
+			last_fetched_at,
+		) FROM address_registery 
+		  WHERE token_address = $1
+	`, address).Scan(
+		&reg.Id,
+		&reg.TokenAddress,
+		&reg.TokenName,
+		&reg.TokenSymbol,
+		&reg.CreatedAt,
+		&reg.LastFetchedAt,
+	)
+
+	if err != nil {
+		log.Println("Failed to get the token from registery")
+		return reg, err
+	}
+
+	return reg, nil
+}
+
 func (s *service) GetSubscriptionsByTxnType(txnType IndexingStrategy, receiverName string) ([]SubscriptionLookup, error) {
 	var subscriptions []SubscriptionLookup
 
@@ -177,7 +208,7 @@ func (s *service) GetSubscriptionsByTxnType(txnType IndexingStrategy, receiverNa
 	)
 
 	if err != nil {
-		log.Printf("Error occured while trying to get helius configs", err)
+		log.Printf("Error occured while trying to get helius configs: %v", err)
 		return nil, err
 	}
 
@@ -224,4 +255,51 @@ func (s *service) GetSubscriptionsByTxnType(txnType IndexingStrategy, receiverNa
 	defer rows.Close()
 
 	return subscriptions, nil
+}
+
+func (s *service) CreateSubscription(tokenAddress string, strats []IndexingStrategy, userId string) error {
+	tx, err := s.db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		log.Println("Failed to begin a transaction: ", err)
+		return err
+	}
+	defer tx.Rollback()
+	token, err := s.GetAddressFromRegistery(tokenAddress)
+
+	if err != nil {
+		log.Println("Failed to fetch address from registery")
+		// TODO - Get the data and create it in registery
+	}
+
+	uuid := utils.GenerateUUID()
+	now := time.Now()
+	_, err = tx.Exec(`
+		INSERT INTO subscription (
+			id,
+			userId,
+			token_address,
+			indexing_strategy,
+			table_name,
+			created_at,
+			updated_at,
+			status,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`,
+		uuid,
+		userId,
+		token.TokenAddress,
+		strats,
+		token.TokenName,
+		now,
+		now,
+		true,
+	)
+	if err != nil {
+		log.Println("Failed to insert subscription in database")
+		return err
+	} else {
+		tx.Commit()
+	}
+
+	return nil
 }

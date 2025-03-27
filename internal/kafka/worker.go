@@ -232,7 +232,176 @@ func InsertPayloadInUserDatabase(ctx context.Context, db *sql.DB, payload Webhoo
 		log.Println("Failed to execute database query: ", userId, err)
 	}
 
+	if err = CreateAndInsertNormalizedData(tx, payload, db_uuid); err != nil {
+		log.Println("Failed to insert normalized data, err: ", err)
+	}
+
 	if err = tx.Commit(); err != nil {
 		log.Println("Failed to commit transaction, changes will be rolled back")
 	}
+}
+
+func CreateAndInsertNormalizedData(tx *sql.Tx, payload WebhookPayload, payloadID string) error {
+	tableCreationQueries := []string{
+		`CREATE TABLE IF NOT EXISTS webhook_payloads (
+			id VARCHAR(255) PRIMARY KEY,
+			signature VARCHAR(255) NOT NULL,
+			slot BIGINT NOT NULL,
+			timestamp TIMESTAMP NOT NULL,
+			source VARCHAR(100),
+			fee INTEGER,
+			fee_payer VARCHAR(255),
+			transaction_type VARCHAR(50),
+			description TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS account_data (
+			id SERIAL PRIMARY KEY,
+			payload_id VARCHAR(255) REFERENCES normalized_webhook_payloads(id),
+			account VARCHAR(255) NOT NULL,
+			native_balance_change NUMERIC(20,0)
+		)`,
+		`CREATE TABLE IF NOT EXISTS token_balance_changes (
+			id SERIAL PRIMARY KEY,
+			account_data_id INTEGER REFERENCES account_data(id),
+			mint VARCHAR(255) NOT NULL,
+			token_account VARCHAR(255) NOT NULL,
+			user_account VARCHAR(255) NOT NULL,
+			token_amount VARCHAR(100) NOT NULL,
+			decimals SMALLINT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS native_transfers (
+			id SERIAL PRIMARY KEY,
+			payload_id VARCHAR(255) REFERENCES webhook_payloads(id),
+			from_user_account VARCHAR(255) NOT NULL,
+			to_user_account VARCHAR(255) NOT NULL,
+			amount NUMERIC(20,0) NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS token_transfers (
+			id SERIAL PRIMARY KEY,
+			payload_id VARCHAR(255) REFERENCES normalized_webhook_payloads(id),
+			from_token_account VARCHAR(255) NOT NULL,
+			from_user_account VARCHAR(255) NOT NULL,
+			to_token_account VARCHAR(255) NOT NULL,
+			to_user_account VARCHAR(255) NOT NULL,
+			mint VARCHAR(255) NOT NULL,
+			token_amount NUMERIC(20,8),
+			token_standard VARCHAR(50)
+		)`,
+	}
+
+	for _, query := range tableCreationQueries {
+		_, err := tx.Exec(query)
+		if err != nil {
+			return fmt.Errorf("failed to create normalized tables: %v", err)
+		}
+	}
+
+	// Insert payload metadata
+	payloadQuery := `
+		INSERT INTO normalized_webhook_payloads 
+		(id, signature, slot, timestamp, source, fee, fee_payer, transaction_type, description)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	_, err := tx.Exec(
+		payloadQuery,
+		payloadID,
+		payload.Signature,
+		payload.Slot,
+		time.Unix(payload.Timestamp, 0),
+		payload.Source,
+		payload.Fee,
+		payload.FeePayer,
+		payload.Type,
+		payload.Description,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert webhook payload: %v", err)
+	}
+
+	// Insert account data
+	for _, accountData := range payload.AccountData {
+		accountQuery := `
+			INSERT INTO normalized_account_data 
+			(payload_id, account, native_balance_change)
+			VALUES ($1, $2, $3)
+			RETURNING id
+		`
+		var accountDataID int
+		err = tx.QueryRow(
+			accountQuery,
+			payloadID,
+			accountData.Account,
+			accountData.NativeBalanceChange.String(),
+		).Scan(&accountDataID)
+		if err != nil {
+			return fmt.Errorf("failed to insert account data: %v", err)
+		}
+
+		// Insert token balance changes
+		for _, tokenChange := range accountData.TokenBalanceChanges {
+			tokenChangeQuery := `
+				INSERT INTO normalized_token_balance_changes
+				(account_data_id, mint, token_account, user_account, token_amount, decimals)
+				VALUES ($1, $2, $3, $4, $5, $6)
+			`
+			_, err = tx.Exec(
+				tokenChangeQuery,
+				accountDataID,
+				tokenChange.Mint,
+				tokenChange.TokenAccount,
+				tokenChange.UserAccount,
+				tokenChange.RawTokenAmount.TokenAmount,
+				tokenChange.RawTokenAmount.Decimals,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to insert token balance changes: %v", err)
+			}
+		}
+	}
+
+	// Insert native transfers
+	for _, transfer := range payload.NativeTransfers {
+		nativeTransferQuery := `
+			INSERT INTO normalized_native_transfers
+			(payload_id, from_user_account, to_user_account, amount)
+			VALUES ($1, $2, $3, $4)
+		`
+		_, err = tx.Exec(
+			nativeTransferQuery,
+			payloadID,
+			transfer.FromUserAccount,
+			transfer.ToUserAccount,
+			transfer.Amount.String(),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert native transfers: %v", err)
+		}
+	}
+
+	// Insert token transfers
+	for _, transfer := range payload.TokenTransfers {
+		tokenTransferQuery := `
+			INSERT INTO normalized_token_transfers
+			(payload_id, from_token_account, from_user_account, 
+			 to_token_account, to_user_account, mint, 
+			 token_amount, token_standard)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`
+		_, err = tx.Exec(
+			tokenTransferQuery,
+			payloadID,
+			transfer.FromTokenAccount,
+			transfer.FromUserAccount,
+			transfer.ToTokenAccount,
+			transfer.ToUserAccount,
+			transfer.Mint,
+			transfer.TokenAmount,
+			transfer.TokenStandard,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert token transfers: %v", err)
+		}
+	}
+
+	return nil
 }

@@ -8,15 +8,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"text/template"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/mux"
 	"github.com/markbates/goth/gothic"
 	"github.com/scythe504/solana-indexer/internal/database"
 	"github.com/scythe504/solana-indexer/internal/kafka"
 	"github.com/scythe504/solana-indexer/internal/utils"
 )
+
+type JwtClaims struct {
+	UserId string `json:"userId"`
+	jwt.RegisteredClaims
+}
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := mux.NewRouter()
@@ -36,7 +43,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.HandleFunc("/webhook/{receiverName}", s.handleWebhookReceiver)
 
+	r.Use(s.authMiddleWare)
+
 	r.HandleFunc("/create-database", s.createUserDatabase)
+
+	r.HandleFunc("/index-token", s.indexAddress)
 
 	return r
 }
@@ -55,6 +66,43 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) authMiddleWare(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		tokenStrings := strings.Split(authHeader, " ")
+		if authHeader == "" || tokenStrings[0] != "Bearer" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		jwtToken := tokenStrings[1]
+
+		secretKey := []byte(os.Getenv("JWT_SECRET"))
+		token, err := jwt.ParseWithClaims(jwtToken, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
+			return secretKey, nil
+		}, jwt.WithValidMethods([]string{
+			jwt.SigningMethodHS256.Alg(),
+		}))
+
+		if err != nil {
+			http.Error(w, "Unauthorized, Invalid Token", http.StatusUnauthorized)
+			return
+		}
+
+		claims, ok := token.Claims.(*JwtClaims)
+
+		if !ok || !token.Valid {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		// Attach user ID to request context
+		r = r.WithContext(context.WithValue(r.Context(), "userId", claims.UserId))
 
 		next.ServeHTTP(w, r)
 	})
@@ -109,6 +157,7 @@ func (s *Server) handleWebhookReceiver(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request) {
 	var dbCredential database.UserDatabaseCredential
+	userId := mux.Vars(r)["userId"]
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -131,7 +180,7 @@ func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.db.CreateDatabaseForUser(dbCredential.UserId, dbCredential)
+	err = s.db.CreateDatabaseForUser(userId, dbCredential)
 
 	if err != nil {
 		log.Println("Invalid database credentials for userId: ", dbCredential.UserId)
@@ -224,6 +273,37 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	gothic.Logout(w, r)
 	w.Header().Set("Location", "/")
 	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (s *Server) indexAddress(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("Failed to ready body")
+		http.Error(w, "Invalid Body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var addressData database.Subscription
+	if err = json.Unmarshal(body, &addressData); err != nil {
+		log.Println("Failed to Unmarshal ")
+		http.Error(w, "Unable to parse body: ", http.StatusInternalServerError)
+		return
+	}
+
+	userId := mux.Vars(r)["userId"]
+
+	if err = s.db.CreateSubscription(
+		addressData.TokenAddress,
+		addressData.Strategies,
+		userId,
+	); err != nil {
+		log.Println("Error occured while creating subscriptions, err: ", err)
+		http.Error(w, "Failed to create indexing for the given address", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`"success": "token indexing started"`))
 }
 
 var userTemplate = `

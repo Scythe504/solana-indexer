@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"context"
 	"log"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/google/uuid"
 )
 
@@ -32,25 +34,26 @@ func ValidSolanaAddress(publicAddress string) error {
 	return nil
 }
 
-// func GetSolanaAddressType(publicAddress string) {
-// 	client := rpc.New(rpc.MainNetBeta_RPC)
+func GetSolanaAddressOwner(publicAddress string) ([]byte, error) {
+	client := rpc.New(rpc.MainNetBeta_RPC)
+
+	address, _ := solana.PublicKeyFromBase58(publicAddress)
+
+	account, err := client.GetAccountInfo(
+		context.Background(),
+		address,
+	)
+
+	if err != nil {
+		log.Printf("Failed to get account info: %v\n", err)
+		return nil, err
+	}
+	ownerAddress, err := account.Value.Owner.MarshalJSON()
+
+	if err != nil {
+		log.Println("Failed to marshal into json, err: ", err)
+		return nil, err
+	}
 	
-	
-// }
-// func GetSolanaAddressData(publicAddress string) (*rpc.DataBytesOrJSON, error) {
-// 	client := rpc.New(rpc.MainNetBeta_RPC)
-
-// 	address, _ := solana.PublicKeyFromBase58(publicAddress)
-
-// 	account, err := client.GetAccountInfo(
-// 		context.Background(),
-// 		address,
-// 	)
-
-// 	if err != nil {
-// 		log.Printf("Failed to get account info: %v\n", err)
-// 		return nil, err
-// 	}
-
-// 	return account.Value.Data, nil
-// }
+	return ownerAddress, nil
+}
