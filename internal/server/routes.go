@@ -302,6 +302,9 @@ func (s *Server) indexAddress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create indexing for the given address", http.StatusInternalServerError)
 		return
 	}
+
+	
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`"success": "token indexing started"`))
 }

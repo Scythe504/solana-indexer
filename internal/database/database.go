@@ -31,8 +31,10 @@ type Service interface {
 
 	// WebhookMethods
 	GetAllWebhooks() ([]HeliusWebhookConfig, error)
-	CreateWebhook(name string, txnType IndexingStrategy, address string) error
+	CreateWebhook(name string, txnType []IndexingStrategy, address string) error
 	GetWebhookConfigByName(name string) (HeliusWebhookConfig, error)
+	UpdateWebhook(heliusConfig []HeliusWebhookConfig, address string, txnType []IndexingStrategy) error
+	CreateOrUpdateWebhook(address string, txnType []IndexingStrategy) error 
 
 	// User Database Methods
 	GetDatabaseConfig(userId string) (*UserDatabaseCredential, error)

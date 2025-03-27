@@ -1,6 +1,6 @@
 package utils
 
-type HeliusWebhookCreateResponse struct {
+type HeliusWebhookResponse struct {
 	WebhookId        string    `json:"webhookID"`
 	Wallet           string    `json:"wallet"`
 	WebhookURL       string    `json:"webhookURL"`
