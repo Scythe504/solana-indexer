@@ -106,6 +106,8 @@ func (s *service) GetDatabaseConfig(userId string) (*UserDatabaseCredential, err
 		&databaseConfig.ConnectionString,
 	)
 
+	// TODO (not_important_for_now) - Maybe parse the connection string and fill connection string or host, port and other stuff 
+
 	if err != nil {
 		log.Println("No database records found for user with userId: ", userId)
 		return nil, err

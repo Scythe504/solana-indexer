@@ -63,6 +63,34 @@ func (s *service) GetUserByEmail(email string) (*User, error) {
 	return user, nil
 }
 
+func (s *service) GetUserById(userId string) (*User, error) {
+	user := &User{}
+
+	err := s.db.QueryRow(`SELECT (
+		id,
+		name,
+		email,
+		email_verified,
+		image,
+		created_at,
+		updated_at
+	) FROM users WHERE id = $1`, userId).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.EmailVerified,
+		&user.Image,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
 func (s *service) CreateAccount(account *Account) error {
 	jsonResp, err := json.MarshalIndent(account, "", " ")
 

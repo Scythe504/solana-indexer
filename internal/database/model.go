@@ -13,9 +13,8 @@ type User struct {
 	CreatedAt     *time.Time             `db:"created_at"`
 	UpdatedAt     *time.Time             `db:"updated_at"`
 	Accounts      []Account              `db:"-"`
-	Sessions      []Session              `db:"-"`
 	DbCredential  UserDatabaseCredential `db:"-"`
-	Indexing      []Subscription    `db:"-"`
+	Indexing      []Subscription         `db:"-"`
 }
 
 type Account struct {
@@ -29,26 +28,6 @@ type Account struct {
 	AccessTokenExpires *time.Time `db:"access_token_expires"`
 	CreatedAt          time.Time  `db:"created_at"`
 	UpdatedAt          time.Time  `db:"updated_at"`
-}
-
-type Session struct {
-	ID           string    `db:"id"`
-	UserID       string    `db:"user_id"`
-	Expires      time.Time `db:"expires"`
-	SessionToken string    `db:"session_token"`
-	AccessToken  string    `db:"access_token"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
-}
-
-// VerificationRequest represents an email verification request
-type VerificationRequest struct {
-	ID         string    `db:"id"`
-	Identifier string    `db:"identifier"`
-	Token      string    `db:"token"`
-	Expires    time.Time `db:"expires"`
-	CreatedAt  time.Time `db:"created_at"`
-	UpdatedAt  time.Time `db:"updated_at"`
 }
 
 type UserDatabaseCredential struct {
@@ -88,7 +67,7 @@ type Subscription struct {
 	TableName    string             `db:"table_name"`
 	CreatedAt    time.Time          `db:"created_at"`
 	UpdatedAt    time.Time          `db:"updated_at"`
-	Status       bool             `db:"status"`
+	Status       bool               `db:"status"`
 }
 
 // Replace this with a denormalized lookup table for faster processing

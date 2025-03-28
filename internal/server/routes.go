@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"text/template"
@@ -43,11 +44,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.HandleFunc("/webhook/{receiverName}", s.handleWebhookReceiver)
 
-	r.Use(s.authMiddleWare)
+	authRoutes := r.PathPrefix("/api").Subrouter()
 
-	r.HandleFunc("/create-database", s.createUserDatabase)
+	authRoutes.Use(s.authMiddleWare)
 
-	r.HandleFunc("/index-token", s.indexAddress)
+	authRoutes.HandleFunc("/create-database", s.createUserDatabase)
+
+	authRoutes.HandleFunc("/index-token", s.indexAddress)
+
+	authRoutes.HandleFunc("/get-session", s.sessionHandler)
 
 	return r
 }
@@ -105,6 +110,40 @@ func (s *Server) authMiddleWare(next http.Handler) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), "userId", claims.UserId))
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// GenerateJWTToken creates a new JWT token for a user
+func (s *Server) GenerateJWTToken(userID string) (string, error) {
+	claims := JwtClaims{
+		UserId: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: &jwt.NumericDate{
+				Time: time.Now().Add(30 * 24 * time.Hour),
+			},
+			Issuer: "sol-indexer.scythe",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secretKey := []byte(os.Getenv("JWT_SECRET"))
+	return token.SignedString(secretKey)
+}
+
+// sessionHandler provides user session information
+func (s *Server) sessionHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("user_id").(string)
+	user, err := s.db.GetUserById(userID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Respond with user session info
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":    user.ID,
+		"name":  user.Name,
+		"email": user.Email,
 	})
 }
 
@@ -204,8 +243,9 @@ func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Let the database assign a UUID for the user (don't set ID here)
+	db_uuid := utils.GenerateUUID()
 	dbUser := &database.User{
+		ID:            db_uuid,
 		Name:          &user.Name,
 		Email:         &user.Email,
 		EmailVerified: false,
@@ -256,7 +296,18 @@ func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("%s/onboarding/database", os.Getenv("FRONTEND_URL")), http.StatusFound)
+	token, err := s.GenerateJWTToken(dbUser.ID)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	redirectURL := fmt.Sprintf("%s/onboarding/database?token=%s",
+		os.Getenv("FRONTEND_URL"),
+		url.QueryEscape(token),
+	)
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 func (s *Server) beginAuthHandler(w http.ResponseWriter, r *http.Request) {
@@ -302,8 +353,6 @@ func (s *Server) indexAddress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create indexing for the given address", http.StatusInternalServerError)
 		return
 	}
-
-	
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`"success": "token indexing started"`))
