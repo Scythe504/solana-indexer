@@ -49,7 +49,7 @@ type Service interface {
 	GetSubscriptionsByTxnType(txnType IndexingStrategy, recieverName string) ([]SubscriptionLookup, error)
 	GetSubscriptionsByAddressAndTxnType(address string, txnType IndexingStrategy, recieverName string) ([]SubscriptionLookup, error)
 	CreateSubscription(tokenAddress string, strats []IndexingStrategy, userId string) error
-	GetAddressFromRegistery(address string) (AddressRegistery, error)
+	GetAddressFromRegistery(address string) (*AddressRegistery, error)
 }
 
 type service struct {

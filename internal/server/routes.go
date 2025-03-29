@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,8 +64,8 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		// CORS Headers
 		w.Header().Set("Access-Control-Allow-Origin", "*") // Wildcard allows all origins
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type")
-		w.Header().Set("Access-Control-Allow-Credentials", "false") // Credentials not allowed with wildcard origins
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, ngrok-skip-browser-warning")
+		w.Header().Set("Access-Control-Allow-Credentials", "true") // Credentials not allowed with wildcard origins
 
 		// Handle preflight OPTIONS requests
 		if r.Method == http.MethodOptions {
@@ -195,8 +196,15 @@ func (s *Server) handleWebhookReceiver(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request) {
-	var dbCredential database.UserDatabaseCredential
-	userId := mux.Vars(r)["userId"]
+	userId := r.Context().Value("userId").(string)
+
+	if userId == "" {
+		log.Println("No userId found in context please login again")
+		http.Redirect(w, r, fmt.Sprintf("%s/", os.Getenv("FRONTEND_URL")), http.StatusUnauthorized)
+		return
+	}
+
+	dbCredential := database.UserDatabaseCredential{}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -207,28 +215,72 @@ func (s *Server) createUserDatabase(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if err := json.Unmarshal(body, &dbCredential); err != nil {
-		log.Println("Error occured while trying to parse body", err)
+		log.Println("Error occurred while trying to parse body", err)
 		http.Error(w, "Invalid Json Payload", http.StatusBadRequest)
 		return
 	}
-	dbExists, _ := s.db.GetDatabaseConfig(dbCredential.UserId)
 
+	id := utils.GenerateUUID()
+	if dbCredential.ID == "" {
+		dbCredential.ID = id
+	}
+
+	if dbCredential.UserId == "" {
+		dbCredential.UserId = userId
+	}
+	dbName := ""
+	if dbCredential.DatabaseName == nil {
+		dbCredential.DatabaseName = &dbName
+	}
+	var host uint16 = 5432
+	if dbCredential.Host == nil {
+		*dbCredential.Host = fmt.Sprintf("%d", host)
+	}
+	user := ""
+	if dbCredential.User == nil {
+		dbCredential.User = &user
+	}
+	password := ""
+	if dbCredential.Password == nil {
+		dbCredential.Password = &password
+	}
+	sslMode := "require"
+	if dbCredential.SSLMode == nil {
+		dbCredential.SSLMode = &sslMode
+	}
+	var connLim int8 = 20
+	if dbCredential.ConnectionLimit == nil {
+		dbCredential.ConnectionLimit = &connLim
+	}
+
+	// Modify the database config check
+	dbExists, err := s.db.GetDatabaseConfig(userId)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Error checking database config for userId %s: %v", userId, err)
+		http.Error(w, "Database configuration check failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if a configuration already exists
 	if dbExists != nil {
-		log.Println("Database config found for user with userId: ", dbCredential.UserId)
+		log.Println("Database config found for user with userId: ", userId)
 		http.Error(w, "Database config already exists", http.StatusBadRequest)
 		return
 	}
 
-	err = s.db.CreateDatabaseForUser(userId, dbCredential)
+	// Ensure the userId is set in the credential
+	dbCredential.UserId = userId
 
+	err = s.db.CreateDatabaseForUser(userId, dbCredential)
 	if err != nil {
-		log.Println("Invalid database credentials for userId: ", dbCredential.UserId)
-		http.Error(w, "Please check you database credentials or if your database is running", http.StatusBadRequest)
+		log.Printf("Failed to create database for userId %s: %v", userId, err)
+		http.Error(w, "Please check your database credentials or if your database is running", http.StatusBadRequest)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"success": "Database credentials stored securely"}`))
+
 }
 
 func (s *Server) getAuthHandler(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +394,7 @@ func (s *Server) indexAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userId := mux.Vars(r)["userId"]
+	userId := r.Context().Value("userId").(string)
 
 	if err = s.db.CreateSubscription(
 		addressData.TokenAddress,

@@ -34,7 +34,7 @@ func ValidSolanaAddress(publicAddress string) error {
 	return nil
 }
 
-func GetSolanaAddressOwner(publicAddress string) ([]byte, error) {
+func GetSolanaAddressOwner(publicAddress string) (string, error) {
 	client := rpc.New(rpc.MainNetBeta_RPC)
 
 	address, _ := solana.PublicKeyFromBase58(publicAddress)
@@ -46,14 +46,9 @@ func GetSolanaAddressOwner(publicAddress string) ([]byte, error) {
 
 	if err != nil {
 		log.Printf("Failed to get account info: %v\n", err)
-		return nil, err
+		return "", err
 	}
-	ownerAddress, err := account.Value.Owner.MarshalJSON()
-
-	if err != nil {
-		log.Println("Failed to marshal into json, err: ", err)
-		return nil, err
-	}
+	ownerAddress := account.Value.Owner.String()
 	
 	return ownerAddress, nil
 }

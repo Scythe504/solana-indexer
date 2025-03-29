@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -12,11 +13,20 @@ import (
 func (s *service) CreateDatabaseForUser(userId string, dbCred UserDatabaseCredential) error {
 	var connString string
 
+	var jsonBlob []byte
+	jsonBlob, _ = json.MarshalIndent(dbCred, "", " ")
+
+	fmt.Println(string(jsonBlob))
 	if dbCred.ConnectionString == nil {
+		fmt.Println("I came here for some reason")
 		connString = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=require&search_path=public", *dbCred.User, *dbCred.Password, *dbCred.Host, *dbCred.Port, *dbCred.DatabaseName)
 	} else {
+		fmt.Println("I came here for some reason")
 		connString = *dbCred.ConnectionString
+		fmt.Printf("\n\n%s\n\n",*dbCred.ConnectionString)
 	}
+
+	fmt.Println("db-credentials.go :21", connString)
 
 	db, err := sql.Open("pgx", connString)
 
@@ -37,26 +47,26 @@ func (s *service) CreateDatabaseForUser(userId string, dbCred UserDatabaseCreden
 	now := time.Now()
 
 	_, err = s.db.Exec(`
-		INSERT INTO user_database_credential 
+		INSERT INTO user_database_credentials
 		(
 			id,
 			user_id,
 			db_name,
 			host,
-			user,
+			db_user,
 			port,
-			password, 
+			db_password, 
 			ssl_mode, 
 			connection_string,
 			connection_limit,
-			status,
 			last_connected_at,
 			created_at,
 			updated_at, 
 			error_message
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`, utils.GenerateUUID(),
 		userId,
+		dbCred.DatabaseName,
 		dbCred.Host,
 		dbCred.User,
 		dbCred.Port,
@@ -64,11 +74,10 @@ func (s *service) CreateDatabaseForUser(userId string, dbCred UserDatabaseCreden
 		dbCred.SSLMode,
 		dbCred.ConnectionString,
 		dbCred.ConnectionLimit,
-		dbCred.Status,
 		now,
 		now,
 		now,
-		nil,
+		"",
 	)
 
 	if err != nil {
@@ -82,17 +91,16 @@ func (s *service) GetDatabaseConfig(userId string) (*UserDatabaseCredential, err
 	var databaseConfig UserDatabaseCredential
 
 	err := s.db.QueryRow(`
-		SELECT (
-			id,
+		SELECT id,
 			user_id,
 			db_name,
 			host,
 			port,
 			user,
-			password,
+			db_password,
 			ssl_mode,
 			connection_string
-		) FROM user_database_credential
+		FROM user_database_credentials
 		  WHERE user_id = $1
 	`, userId).Scan(
 		&databaseConfig.ID,

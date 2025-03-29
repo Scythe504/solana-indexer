@@ -6,7 +6,7 @@ import (
 
 type User struct {
 	ID            string                 `db:"id"`
-	Name          *string                `db:"name"`
+	Name          *string                `db:"user_name"`
 	Email         *string                `db:"email"`
 	EmailVerified bool                   `db:"email_verified"`
 	Image         *string                `db:"image"`
@@ -33,15 +33,14 @@ type Account struct {
 type UserDatabaseCredential struct {
 	ID               string     `db:"id"`
 	UserId           string     `db:"user_id"`
-	DatabaseName     *string    `db:"db_name"`
-	Host             *string    `db:"host"`
-	User             *string    `db:"user"`
-	Port             *uint16    `db:"port"`
-	Password         *string    `db:"password"`
-	SSLMode          *string    `db:"ssl_mode"`
-	ConnectionString *string    `db:"connection_string"`
+	DatabaseName     *string    `db:"db_name" json:"db_name"`
+	Host             *string    `db:"host" json:"host"`
+	User             *string    `db:"db_user" json:"user"`
+	Port             *uint16    `db:"port" json:"port"`
+	Password         *string    `db:"db_password" json:"password"`
+	SSLMode          *string    `db:"ssl_mode" json:"ssl_mode"`
+	ConnectionString *string    `db:"connection_string" json:"connection_string"`
 	ConnectionLimit  *int8      `db:"connection_limit"`
-	Status           *string    `db:"status"`
 	LastConnectedAt  *time.Time `db:"last_connected_at"`
 	CreatedAt        time.Time  `db:"created_at"`
 	UpdatedAt        time.Time  `db:"updated_at"`
@@ -61,9 +60,9 @@ type AddressRegistery struct {
 // This becomes your primary subscription table (many-to-many relationship)
 type Subscription struct {
 	Id           string             `db:"id"`
-	UserId       string             `db:"user_id"`       // Index this
-	TokenAddress string             `db:"token_address"` // Index this
-	Strategies   []IndexingStrategy `db:"indexing_strategy"`
+	UserId       string             `db:"user_id"`                            // Index this
+	TokenAddress string             `db:"token_address" json:"token_address"` // Index this
+	Strategies   []IndexingStrategy `db:"indexing_strategy" json:"indexing_strategy"`
 	TableName    string             `db:"table_name"`
 	CreatedAt    time.Time          `db:"created_at"`
 	UpdatedAt    time.Time          `db:"updated_at"`

@@ -171,7 +171,7 @@ func (s *service) GetWebhookConfigByName(name string) (HeliusWebhookConfig, erro
 	var cfg HeliusWebhookConfig
 
 	err := s.db.QueryRow(`
-		SELECT (*)
+		SELECT *
 		FROM helius_webhook_config 
 		WHERE webhook_name = $1
 	`, name).Scan(

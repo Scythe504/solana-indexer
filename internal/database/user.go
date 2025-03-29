@@ -20,7 +20,7 @@ func (s *service) CreateUser(user *User) error {
 	user.UpdatedAt = &now
 
 	_, err := s.db.Exec(
-		`INSERT INTO users (
+		`INSERT INTO users 
 		id, 
 		name, 
 		email, 
@@ -28,8 +28,8 @@ func (s *service) CreateUser(user *User) error {
 		image, 
 		created_at, 
 		updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		
+		VALUES $1, $2, $3, $4, $5, $6, $7
 	`,
 		user.ID,
 		user.Name,
@@ -46,7 +46,16 @@ func (s *service) CreateUser(user *User) error {
 func (s *service) GetUserByEmail(email string) (*User, error) {
 	user := &User{}
 
-	err := s.db.QueryRow(`SELECT * FROM users WHERE email = $1`, email).Scan(
+	err := s.db.QueryRow(
+		`SELECT id, 
+		user_name,
+		email,
+		email_verified,
+		image,
+		created_at,
+		updated_at
+		FROM users 
+		WHERE email = $1`, email).Scan(
 		&user.ID,
 		&user.Name,
 		&user.Email,
@@ -66,7 +75,7 @@ func (s *service) GetUserByEmail(email string) (*User, error) {
 func (s *service) GetUserById(userId string) (*User, error) {
 	user := &User{}
 
-	err := s.db.QueryRow(`SELECT (
+	err := s.db.QueryRow(`SELECT 
 		id,
 		name,
 		email,
@@ -74,7 +83,7 @@ func (s *service) GetUserById(userId string) (*User, error) {
 		image,
 		created_at,
 		updated_at
-	) FROM users WHERE id = $1`, userId).Scan(
+	FROM users WHERE id = $1`, userId).Scan(
 		&user.ID,
 		&user.Name,
 		&user.Email,
@@ -102,7 +111,7 @@ func (s *service) CreateAccount(account *Account) error {
 	fmt.Println("Account: ", string(jsonResp))
 
 	_, err = s.db.Exec(
-		`INSERT INTO accounts (
+		`INSERT INTO accounts 
 			id,
 			user_id,
 			provider_type,
@@ -113,7 +122,7 @@ func (s *service) CreateAccount(account *Account) error {
 			access_token_expires,
 			created_at,
 			updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		VALUES $1, $2, $3, $4, $5, $6, $7, $8, $9, $10`,
 		account.ID,
 		account.UserID,
 		account.ProviderType,
